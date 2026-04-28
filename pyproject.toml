@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "one-to-md-converter"
+version = "0.1.0"
+description = "Convert OneNote desktop notebooks (.one / on-disk hierarchy) into Markdown via the OneNote COM API."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+authors = [{ name = "Thorsten Tegetmeyer-Kleine" }]
+keywords = ["onenote", "markdown", "export", "converter"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Topic :: Office/Business",
+    "Topic :: Text Processing :: Markup :: Markdown",
+]
+dependencies = ["pythonnet>=3.0"]
+
+[project.urls]
+Homepage = "https://github.com/TTK95/one-to-md-converter"
+Issues = "https://github.com/TTK95/one-to-md-converter/issues"
+
+[project.scripts]
+one-to-md = "one_to_md.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

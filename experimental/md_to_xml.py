@@ -61,6 +61,14 @@ def _esc_attr(s: str) -> str:
     return html.escape(s, quote=True)
 
 
+def _cdata(s: str) -> str:
+    """Wrap ``s`` in ``<![CDATA[...]]>`` and split any internal ``]]>`` so
+    user-supplied text containing literal ``]]>`` cannot terminate the section
+    early and break the page XML.
+    """
+    return "<![CDATA[" + s.replace("]]>", "]]]]><![CDATA[>") + "]]>"
+
+
 def _extract_inline_oid(children: List[Token]) -> tuple[Optional[str], List[Token]]:
     """Strip leading ``<span data-oid="…"></span>`` markers from inline children.
 
@@ -422,7 +430,7 @@ def _serialize_block(b: _Block) -> str:
     if b.kind == "empty":
         if not b.oid:
             return ""
-        return f"<one:OE{oid_attr}><one:T><![CDATA[]]></one:T></one:OE>"
+        return f"<one:OE{oid_attr}><one:T>{_cdata('')}</one:T></one:OE>"
 
     if b.kind == "placeholder":
         if not b.oid:
@@ -444,13 +452,13 @@ def _serialize_block(b: _Block) -> str:
                 f'<one:InsertedFile preferredName="{_esc_attr(name)}"/>'
                 f"</one:OE>"
             )
-        return f"<one:OE{oid_attr}><one:T><![CDATA[]]></one:T></one:OE>"
+        return f"<one:OE{oid_attr}><one:T>{_cdata('')}</one:T></one:OE>"
 
     if b.kind == "title":
         return (
             f"<one:Title>"
             f'<one:OE{oid_attr} quickStyleIndex="0">'
-            f"<one:T><![CDATA[{b.text_html}]]></one:T>"
+            f"<one:T>{_cdata(b.text_html)}</one:T>"
             f"</one:OE>"
             f"</one:Title>"
         )
@@ -459,7 +467,7 @@ def _serialize_block(b: _Block) -> str:
         idx = int(b.kind[1])
         return (
             f'<one:OE{oid_attr} quickStyleIndex="{idx}">'
-            f"<one:T><![CDATA[{b.text_html}]]></one:T>"
+            f"<one:T>{_cdata(b.text_html)}</one:T>"
             f"</one:OE>"
         )
 
@@ -467,7 +475,7 @@ def _serialize_block(b: _Block) -> str:
         children_xml = _serialize_oechildren(b.children)
         return (
             f"<one:OE{oid_attr}>"
-            f"<one:T><![CDATA[{b.text_html}]]></one:T>"
+            f"<one:T>{_cdata(b.text_html)}</one:T>"
             f"{children_xml}"
             f"</one:OE>"
         )
@@ -478,7 +486,7 @@ def _serialize_block(b: _Block) -> str:
         return (
             f"<one:OE{oid_attr}>"
             f"<one:List>{marker}</one:List>"
-            f"<one:T><![CDATA[{b.text_html}]]></one:T>"
+            f"<one:T>{_cdata(b.text_html)}</one:T>"
             f"{children_xml}"
             f"</one:OE>"
         )
@@ -492,7 +500,7 @@ def _serialize_block(b: _Block) -> str:
                 cells_xml.append(
                     f"<one:Cell>"
                     f"<one:OEChildren>"
-                    f"<one:OE><one:T><![CDATA[{cell_html}]]></one:T></one:OE>"
+                    f"<one:OE><one:T>{_cdata(cell_html)}</one:T></one:OE>"
                     f"</one:OEChildren>"
                     f"</one:Cell>"
                 )
@@ -522,7 +530,7 @@ def md_to_xml(
     page_id: str,
     *,
     page_name: Optional[str] = None,
-    page_lang: str = "de",
+    page_lang: str = "en",
 ) -> str:
     """Convert Markdown to a OneNote 2013 ``<one:Page>`` XML document.
 

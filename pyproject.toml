@@ -19,7 +19,7 @@ classifiers = [
     "Topic :: Office/Business",
     "Topic :: Text Processing :: Markup :: Markdown",
 ]
-dependencies = ["pythonnet>=3.0"]
+dependencies = ["pythonnet>=3.0", "markdown-it-py>=3.0"]
 
 [project.urls]
 Homepage = "https://github.com/TTK95/one-to-md-converter"

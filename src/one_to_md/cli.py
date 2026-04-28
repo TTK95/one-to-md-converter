@@ -23,7 +23,7 @@ def _cmd_convert(args: argparse.Namespace) -> int:
     if not src.is_dir():
         print(f"Not a directory: {src}", file=sys.stderr)
         return 2
-    n_ok, n_err = convert_tree(src, dst)
+    n_ok, n_err = convert_tree(src, dst, emit_oids=not args.no_oids)
     print(f"Converted {n_ok} pages ({n_err} errors). Out: {dst}")
     return 0 if n_err == 0 else 1
 
@@ -39,7 +39,7 @@ def _cmd_export(args: argparse.Namespace) -> int:
     pages, errs = dump_notebook(args.notebook, xml_dir)
 
     print(f"==> Converting to {md_dir}")
-    n_ok, n_err = convert_tree(xml_dir, md_dir)
+    n_ok, n_err = convert_tree(xml_dir, md_dir, emit_oids=not args.no_oids)
     print(f"Converted {n_ok} pages ({n_err} errors).")
 
     print()
@@ -67,12 +67,22 @@ def main(argv: list[str] | None = None) -> int:
     p_conv = sub.add_parser("convert", help="Convert a tree of XML pages to Markdown.")
     p_conv.add_argument("input", help="Directory holding the XML dump.")
     p_conv.add_argument("output", help="Output directory for Markdown files.")
+    p_conv.add_argument(
+        "--no-oids",
+        action="store_true",
+        help="Omit <!-- oid=... --> annotations (cleaner MD; not round-trippable).",
+    )
     p_conv.set_defaults(func=_cmd_convert)
 
     p_exp = sub.add_parser("export", help="Dump + convert in one go.")
     p_exp.add_argument("notebook", help="Notebook display name.")
     p_exp.add_argument(
         "-o", "--output", default=".", help="Base directory for output (default: cwd)."
+    )
+    p_exp.add_argument(
+        "--no-oids",
+        action="store_true",
+        help="Omit <!-- oid=... --> annotations (cleaner MD; not round-trippable).",
     )
     p_exp.set_defaults(func=_cmd_export)
 

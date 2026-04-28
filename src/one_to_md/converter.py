@@ -44,42 +44,76 @@ def _render_t(text_html: str) -> str:
     return html.unescape(s)
 
 
-def _render_oe(oe: ET.Element, indent: int = 0) -> list[str]:
-    """Render a OneNote outline element (and children) to Markdown lines."""
+def _oid_comment(elem: ET.Element, indent: int = 0) -> str:
+    oid = elem.attrib.get("objectID")
+    if not oid:
+        return ""
+    return f"{'  ' * indent}<!-- oid={oid} -->"
+
+
+def _render_oe(oe: ET.Element, indent: int = 0, emit_oids: bool = True) -> list[str]:
+    """Render a OneNote outline element (and children) to Markdown lines.
+
+    All OE oids ride inline as ``<span data-oid="…"></span>``. Block-level
+    HTML comments would split any enclosing list at every annotated item,
+    so we keep block-level annotations only for outline-level markers (handled
+    in :func:`render_page`).
+    """
     out: list[str] = []
     is_bullet = oe.find("on:List/on:Bullet", _NS) is not None
     is_numbered = oe.find("on:List/on:Number", _NS) is not None
-    pad = "  " * indent
+    is_list = is_bullet or is_numbered
+    pad = "   " * indent
+    oid = oe.attrib.get("objectID") if emit_oids else None
+    inline_oid = f'<span data-oid="{oid}"></span>' if oid else ""
 
     text_parts = [_render_t(t.text) for t in oe.findall("on:T", _NS) if t.text]
     text = " ".join(p for p in text_parts if p).strip()
 
     if text:
         if is_bullet:
-            out.append(f"{pad}- {text}")
+            out.append(f"{pad}- {inline_oid}{text}")
         elif is_numbered:
-            out.append(f"{pad}1. {text}")
+            out.append(f"{pad}1. {inline_oid}{text}")
         else:
-            out.append(f"{pad}{text}")
-            out.append("")
+            out.append(f"{pad}{inline_oid}{text}")
+        out.append("")
     else:
         img = oe.find("on:Image", _NS)
-        if img is not None:
-            out.append(f"{pad}![{img.attrib.get('alt', 'image')}](image)")
         ifile = oe.find("on:InsertedFile", _NS)
-        if ifile is not None:
-            out.append(f"{pad}_(attached file: {ifile.attrib.get('preferredName', 'file')})_")
+        if img is not None:
+            placeholder = f"![{img.attrib.get('alt', 'image')}](image)"
+            line = f"{pad}- {inline_oid}{placeholder}" if is_bullet else (
+                f"{pad}1. {inline_oid}{placeholder}" if is_numbered else f"{pad}{inline_oid}{placeholder}"
+            )
+            out.append(line)
+            out.append("")
+        elif ifile is not None:
+            placeholder = f"_(attached file: {ifile.attrib.get('preferredName', 'file')})_"
+            line = f"{pad}- {inline_oid}{placeholder}" if is_bullet else (
+                f"{pad}1. {inline_oid}{placeholder}" if is_numbered else f"{pad}{inline_oid}{placeholder}"
+            )
+            out.append(line)
+            out.append("")
+        elif inline_oid:
+            if is_bullet:
+                out.append(f"{pad}- {inline_oid}")
+            elif is_numbered:
+                out.append(f"{pad}1. {inline_oid}")
+            else:
+                out.append(f"{pad}{inline_oid}")
+            out.append("")
 
     children = oe.find("on:OEChildren", _NS)
     if children is not None:
-        nested_indent = indent + (1 if (is_bullet or is_numbered) else 0)
+        nested_indent = indent + (1 if is_list else 0)
         for child_oe in children.findall("on:OE", _NS):
-            out.extend(_render_oe(child_oe, nested_indent))
+            out.extend(_render_oe(child_oe, nested_indent, emit_oids=emit_oids))
 
     return out
 
 
-def _render_table(tbl: ET.Element) -> list[str]:
+def _render_table(tbl: ET.Element, emit_oids: bool = True) -> list[str]:
     rows: list[list[str]] = []
     for row in tbl.findall("on:Row", _NS):
         cells: list[str] = []
@@ -87,7 +121,7 @@ def _render_table(tbl: ET.Element) -> list[str]:
             cell_lines: list[str] = []
             for oechildren in cell.findall("on:OEChildren", _NS):
                 for oe in oechildren.findall("on:OE", _NS):
-                    cell_lines.extend(_render_oe(oe))
+                    cell_lines.extend(_render_oe(oe, emit_oids=False))
             cells.append(" ".join(l.strip() for l in cell_lines).strip() or " ")
         rows.append(cells)
     if not rows:
@@ -100,29 +134,52 @@ def _render_table(tbl: ET.Element) -> list[str]:
     return out
 
 
-def render_page(xml_text: str) -> str:
-    """Convert a single OneNote 2013 ``<one:Page>`` document to Markdown."""
+def render_page(xml_text: str, emit_oids: bool = True) -> str:
+    """Convert a single OneNote 2013 ``<one:Page>`` document to Markdown.
+
+    When ``emit_oids`` is true (default), each outline element is preceded by
+    an ``<!-- oid=... -->`` HTML comment carrying its OneNote ``objectID``.
+    The companion ``experimental.md_to_xml`` reads these comments back, so
+    ``UpdatePageContent`` can merge edits by ID instead of appending.
+    """
     root = ET.fromstring(xml_text)
     name = root.attrib.get("name", "Untitled")
-    dt = root.attrib.get("dateTime", "")
 
-    lines: list[str] = [f"# {name}", ""]
-    if dt:
-        lines.append(f"_Created: {dt}_")
-        lines.append("")
+    title_oid = ""
+    title_elem = root.find("on:Title", _NS)
+    if emit_oids and title_elem is not None:
+        title_oe = title_elem.find("on:OE", _NS)
+        if title_oe is not None and title_oe.attrib.get("objectID"):
+            title_oid = f"<!-- oid={title_oe.attrib['objectID']} title=1 -->"
+
+    lines: list[str] = []
+    if title_oid:
+        lines.append(title_oid)
+    lines.extend([f"# {name}", ""])
 
     for child in root:
         tag = child.tag.split("}", 1)[-1]
         if tag != "Outline":
             continue
+        if emit_oids and child.attrib.get("objectID"):
+            lines.append(f"<!-- oid={child.attrib['objectID']} outline=1 -->")
         for oechildren in child.findall("on:OEChildren", _NS):
             for oe in oechildren.findall("on:OE", _NS):
                 table = oe.find("on:Table", _NS)
                 if table is not None:
-                    lines.extend(_render_table(table))
+                    if emit_oids and oe.attrib.get("objectID"):
+                        rows = len(table.findall("on:Row", _NS))
+                        cols = max(
+                            (len(r.findall("on:Cell", _NS)) for r in table.findall("on:Row", _NS)),
+                            default=0,
+                        )
+                        lines.append(
+                            f"<!-- oid={oe.attrib['objectID']} table={cols}x{rows} -->"
+                        )
+                    lines.extend(_render_table(table, emit_oids=emit_oids))
                     lines.append("")
                 else:
-                    lines.extend(_render_oe(oe))
+                    lines.extend(_render_oe(oe, emit_oids=emit_oids))
         lines.append("")
 
     text = "\n".join(lines)
@@ -130,7 +187,7 @@ def render_page(xml_text: str) -> str:
     return text.strip() + "\n"
 
 
-def convert_tree(xml_root: Path, md_root: Path) -> tuple[int, int]:
+def convert_tree(xml_root: Path, md_root: Path, emit_oids: bool = True) -> tuple[int, int]:
     """Walk ``xml_root`` for ``*.xml`` and write a mirror tree of ``.md``."""
     n_ok = 0
     n_err = 0
@@ -142,7 +199,7 @@ def convert_tree(xml_root: Path, md_root: Path) -> tuple[int, int]:
         md_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             md_path.write_text(
-                render_page(xml_path.read_text(encoding="utf-8")),
+                render_page(xml_path.read_text(encoding="utf-8"), emit_oids=emit_oids),
                 encoding="utf-8",
             )
             n_ok += 1

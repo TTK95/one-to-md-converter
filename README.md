@@ -108,13 +108,21 @@ converter to surface anything the default Markdown rendering drops.
 
 ## Experimental: Markdown → OneNote (writeback)
 
-`experimental/importer.py` is a sketch of the reverse direction: take a
-Markdown file produced by this tool, convert it back into OneNote 2013
-XML, and call `Application.UpdatePageContent` to merge it onto the
-matching page. It is **incomplete** — the `md_to_xml` conversion module
-is not yet bundled — and it currently appends content rather than
-replacing it. Treat it as a starting point, not a working tool. Test
-only against an empty page in a sandbox section.
+`experimental/` ships a working writeback path: edit the Markdown copy of a
+page and push the changes back into OneNote via `Application.UpdatePageContent`.
+
+```bash
+one-to-md convert ./xml-out ./md-out         # MD now carries oid annotations
+# ... edit ./md-out/.../My Page_abcd1234.md ...
+python experimental/importer.py "My Notebook" ./md-out/.../My\ Page_abcd1234.md
+```
+
+By default the conversion preserves OneNote `objectID`s as `<!-- oid=… -->`
+HTML comments and `<span data-oid="…"></span>` inline markers, so
+`UpdatePageContent` *merges by ID* — edited blocks replace, untouched blocks
+stay put. Pass `--no-oids` to `convert` for clean Markdown if you don't need
+writeback. See [`experimental/README.md`](experimental/README.md) for schema
+coverage, round-trip fidelity numbers, and live-test guidance.
 
 ## License
 

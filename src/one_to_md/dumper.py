@@ -33,7 +33,19 @@ def dump_notebook(notebook_name: str, out_root: Path) -> tuple[int, int]:
     Returns ``(pages_dumped, pages_errored)``.
     """
     import clr  # type: ignore  # provided by pythonnet
-    clr.AddReference("Microsoft.Office.Interop.OneNote")
+    try:
+        clr.AddReference("Microsoft.Office.Interop.OneNote")
+    except Exception:
+        import glob
+        candidates = sorted(
+            glob.glob(
+                r"C:\Windows\assembly\GAC_MSIL\Microsoft.Office.Interop.OneNote\*\Microsoft.Office.Interop.OneNote.dll"
+            ),
+            reverse=True,
+        )
+        if not candidates:
+            raise
+        clr.AddReference(candidates[0])
     from Microsoft.Office.Interop.OneNote import (  # type: ignore
         Application, HierarchyScope, PageInfo, XMLSchema,
     )
